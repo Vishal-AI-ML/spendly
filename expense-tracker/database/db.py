@@ -111,3 +111,14 @@ def create_user(name, email, password):
         return cur.lastrowid
     finally:
         conn.close()
+
+
+def get_user_by_email(email):
+    conn = get_db()
+    try:
+        return conn.execute(
+            "SELECT * FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+    finally:
+        conn.close()
