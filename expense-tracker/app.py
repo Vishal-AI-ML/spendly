@@ -92,7 +92,48 @@ def logout():
 
 @app.route("/profile")
 def profile():
-    return "Profile page — coming in Step 4"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user = {
+        "name": "Demo User",
+        "email": "demo@spendly.com",
+        "initials": "DU",
+        "member_since": "January 2026",
+    }
+    stats = {
+        "total_spent": "₹348.00",
+        "transaction_count": 8,
+        "top_category": "Food",
+    }
+    transactions = [
+        {"date": "Jul 22, 2026", "description": "Restaurant dinner", "category": "Food", "amount": "₹42.75"},
+        {"date": "Jul 19, 2026", "description": "New shoes", "category": "Shopping", "amount": "₹67.25"},
+        {"date": "Jul 15, 2026", "description": "Movie tickets", "category": "Entertainment", "amount": "₹32.00"},
+        {"date": "Jul 12, 2026", "description": "Pharmacy", "category": "Health", "amount": "₹23.50"},
+        {"date": "Jul 08, 2026", "description": "Electricity bill", "category": "Bills", "amount": "₹89.99"},
+        {"date": "Jul 05, 2026", "description": "Monthly metro pass", "category": "Transport", "amount": "₹45.00"},
+        {"date": "Jul 01, 2026", "description": "Groceries", "category": "Food", "amount": "₹32.50"},
+    ]
+    # pct is each category's total relative to the largest category (Bills),
+    # rounded to the nearest 5 so it maps onto the .bar-w-* utility classes.
+    categories = [
+        {"name": "Bills", "total": "₹89.99", "pct": 100},
+        {"name": "Food", "total": "₹75.25", "pct": 85},
+        {"name": "Shopping", "total": "₹67.25", "pct": 75},
+        {"name": "Transport", "total": "₹45.00", "pct": 50},
+        {"name": "Entertainment", "total": "₹32.00", "pct": 35},
+        {"name": "Health", "total": "₹23.50", "pct": 25},
+        {"name": "Other", "total": "₹15.00", "pct": 15},
+    ]
+
+    return render_template(
+        "profile.html",
+        user=user,
+        stats=stats,
+        transactions=transactions,
+        categories=categories,
+    )
 
 
 @app.route("/expenses/add")
