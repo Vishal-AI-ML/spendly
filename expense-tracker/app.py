@@ -1,10 +1,17 @@
 import os
 import sqlite3
+from datetime import datetime
 
 from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
 from database.db import create_user, get_db, get_user_by_email, init_db, seed_db
+from database.queries import (
+    get_category_breakdown,
+    get_recent_transactions,
+    get_summary_stats,
+    get_user_by_id,
+)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
@@ -12,6 +19,31 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-producti
 with app.app_context():
     init_db()
     seed_db()
+
+
+# ------------------------------------------------------------------ #
+# Presentation helpers                                                #
+# ------------------------------------------------------------------ #
+
+def format_currency(amount):
+    return f"₹{amount:.2f}"
+
+
+def format_txn_date(date_str):
+    return datetime.strptime(date_str, "%Y-%m-%d").strftime("%b %d, %Y")
+
+
+def derive_initials(name):
+    words = name.split()
+    if not words:
+        return ""
+    if len(words) == 1:
+        return words[0][:2].upper()
+    return (words[0][0] + words[1][0]).upper()
+
+
+def snap_bar_width(pct):
+    return min(100, max(5, round(pct / 5) * 5))
 
 
 # ------------------------------------------------------------------ #
@@ -92,39 +124,47 @@ def logout():
 
 @app.route("/profile")
 def profile():
-    if not session.get("user_id"):
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+
+    user_row = get_user_by_id(user_id)
+    if user_row is None:
+        session.pop("user_id", None)
         return redirect(url_for("login"))
 
     user = {
-        "name": "Demo User",
-        "email": "demo@spendly.com",
-        "initials": "DU",
-        "member_since": "January 2026",
+        "name": user_row["name"],
+        "email": user_row["email"],
+        "member_since": user_row["member_since"],
+        "initials": derive_initials(user_row["name"]),
     }
+
+    stats_row = get_summary_stats(user_id)
     stats = {
-        "total_spent": "₹348.00",
-        "transaction_count": 8,
-        "top_category": "Food",
+        "total_spent": format_currency(stats_row["total_spent"]),
+        "transaction_count": stats_row["transaction_count"],
+        "top_category": stats_row["top_category"],
     }
+
     transactions = [
-        {"date": "Jul 22, 2026", "description": "Restaurant dinner", "category": "Food", "amount": "₹42.75"},
-        {"date": "Jul 19, 2026", "description": "New shoes", "category": "Shopping", "amount": "₹67.25"},
-        {"date": "Jul 15, 2026", "description": "Movie tickets", "category": "Entertainment", "amount": "₹32.00"},
-        {"date": "Jul 12, 2026", "description": "Pharmacy", "category": "Health", "amount": "₹23.50"},
-        {"date": "Jul 08, 2026", "description": "Electricity bill", "category": "Bills", "amount": "₹89.99"},
-        {"date": "Jul 05, 2026", "description": "Monthly metro pass", "category": "Transport", "amount": "₹45.00"},
-        {"date": "Jul 01, 2026", "description": "Groceries", "category": "Food", "amount": "₹32.50"},
+        {
+            "date": format_txn_date(t["date"]),
+            "description": t["description"],
+            "category": t["category"],
+            "amount": format_currency(t["amount"]),
+        }
+        for t in get_recent_transactions(user_id)
     ]
-    # pct is each category's total relative to the largest category (Bills),
-    # rounded to the nearest 5 so it maps onto the .bar-w-* utility classes.
+
     categories = [
-        {"name": "Bills", "total": "₹89.99", "pct": 100},
-        {"name": "Food", "total": "₹75.25", "pct": 85},
-        {"name": "Shopping", "total": "₹67.25", "pct": 75},
-        {"name": "Transport", "total": "₹45.00", "pct": 50},
-        {"name": "Entertainment", "total": "₹32.00", "pct": 35},
-        {"name": "Health", "total": "₹23.50", "pct": 25},
-        {"name": "Other", "total": "₹15.00", "pct": 15},
+        {
+            "name": c["name"],
+            "total": format_currency(c["amount"]),
+            "pct": c["pct"],
+            "bar_width": snap_bar_width(c["pct"]),
+        }
+        for c in get_category_breakdown(user_id)
     ]
 
     return render_template(
